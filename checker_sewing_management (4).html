@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CHECKER - Sewing Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: { 
+            primary: '#2ddccb', 
+            secondary: '#a3e635', 
+            background: '#0f172a',
+            surface: '#1e293b'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .fade-in { animation: fadeIn 0.3s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="font-sans antialiased pb-24 h-screen flex flex-col">
+
+  <header class="bg-surface/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
+    <div class="px-5 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-teal-600 flex items-center justify-center shadow-lg shadow-primary/20">
+          <i class="fas fa-industry text-gray-900 text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-black text-white tracking-wide leading-none">CHECKER</h1>
+          <p class="text-[9px] font-bold text-gray-500 tracking-widest mt-1 uppercase">Sewing Management</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="ui.showAdminSelector()" class="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-full py-1 pl-1 pr-3 hover:bg-gray-800 transition-colors">
+          <div id="admin-avatar" class="w-7 h-7 rounded-full bg-red-500/20 border border-red-500 text-red-500 flex items-center justify-center animate-pulse">
+            <i class="fas fa-exclamation text-[10px]"></i>
+          </div>
+          <span id="admin-name" class="text-xs font-bold text-red-400">Pilih Admin</span>
+        </button>
+        <button onclick="ui.showSettings()" class="w-9 h-9 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 flex items-center justify-center transition-colors border border-gray-700">
+          <i class="fas fa-cog"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 overflow-y-auto hide-scrollbar p-5 space-y-6" id="main-content">
+    <div id="view-karyawan" class="hidden"></div>
+    <div id="view-produksi" class="hidden"></div>
+    <div id="view-laporan" class="hidden"></div>
+  </main>
+
+  <nav class="fixed bottom-0 w-full bg-surface/90 backdrop-blur-lg border-t border-gray-800 px-6 py-3 z-50">
+    <div class="flex justify-between items-center max-w-md mx-auto relative">
+      <button onclick="ui.switchTab('karyawan')" id="nav-karyawan" class="flex flex-col items-center gap-1.5 w-16 transition-colors text-gray-500">
+        <i class="fas fa-users text-xl"></i>
+        <span class="text-[10px] font-bold">Karyawan</span>
+      </button>
+      
+      <div class="absolute left-1/2 -translate-x-1/2 -top-8">
+        <button onclick="ui.switchTab('produksi')" id="nav-produksi" class="w-16 h-16 bg-gradient-to-br from-primary to-teal-500 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(45,220,203,0.4)] text-gray-900 border-4 border-[#0f172a] transform transition-transform active:scale-95">
+          <i class="fas fa-cut text-2xl"></i>
+        </button>
+        <span class="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary">Produksi</span>
+      </div>
+
+      <button onclick="ui.switchTab('laporan')" id="nav-laporan" class="flex flex-col items-center gap-1.5 w-16 transition-colors text-gray-500">
+        <i class="fas fa-chart-pie text-xl"></i>
+        <span class="text-[10px] font-bold">Laporan</span>
+      </button>
+    </div>
+  </nav>
+
+  <div id="modal-container"></div>
+  <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'checker-app-default';
+    
+    // Fallback and safe JSON parsing to prevent SyntaxError
+    let firebaseConfig = {};
+    try {
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+      }
+    } catch(e) { 
+      console.warn("Konfigurasi Firebase lokal digunakan (Safe Parsing)."); 
+    }
+    
+    let app, db, auth;
+    try {
+      app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      auth = getAuth(app);
+    } catch(e) { console.error("Firebase init failed", e); }
+
+    const defaultMaster = {
+      corak: ["Bunga", "Polos", "Batik", "Abstrak", "Kotak", "Garis", "Salur", "Pucuk", "Daun", "Awan", "Mega", "Truntum", "Kombinasi", "Anak", "Dewasa"],
+      kode: ["B01", "B02", "P01", "P02", "A01", "A02", "K01", "K02", "RTK"],
+      grid: ["A1", "A2", "B1", "B2", "C1", "C2", "D1", "D2", "E1", "E2", "F1", "F2"],
+      label: ["Label Leher", "Label Samping", "Label Ukuran", "Washing", "Hangtag", "Woven"],
+      admin: ["Admin 1", "Admin 2"]
+    };
+
+    // Pemetaan Corak ke Kode Corak (Dapat diedit dan ditambah sesuai kebutuhan)
+    const pemetaanCorakKode = {
+      "Bunga": ["B01", "B02"],
+      "Polos": ["P01", "P02"],
+      "Abstrak": ["A01", "A02"],
+      "Batik": ["K01", "K02", "RTK"],
+      "Kotak": ["K01", "K02"],
+      "Kombinasi": ["RTK"]
+    };
+
+    const state = {
+      tab: 'produksi', 
+      karyawan: [], produksi: [], absensi: [], 
+      master: { corak: [], kode: [], grid: [], admin: [], label: [] }, 
+      userId: null,
+      currentAdmin: localStorage.getItem('checker_active_admin') || '',
+      form: { karyawanId: '', step: 1, corak: '', kodeCorak: '', jenisLabel: '', grid: '', pcs: '' },
+      catatanLaporan: ''
+    };
+
+    function getToday() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function docPath(col, docId) { return doc(db, 'artifacts', appId, 'users', state.userId, col, docId); }
+    function colPath(col) { return collection(db, 'artifacts', appId, 'users', state.userId, col); }
+
+    window.api = {
+      deleteKaryawan(id) {
+        if (!state.userId) return;
+        ui.closeModal();
+        setDoc(docPath('karyawan', id), { deleted: true }, { merge: true })
+          .then(() => ui.toast('Karyawan dihapus', 'success'));
+      },
+      saveKaryawan(e) {
+        e.preventDefault();
+        if (!state.userId) return;
+        const id = document.getElementById('karyawan-id').value || crypto.randomUUID();
+        const data = {
+          id,
+          nama: document.getElementById('karyawan-nama').value,
+          nik: document.getElementById('karyawan-nik').value,
+          statusOp: document.getElementById('karyawan-statusOp').value,
+          hariLibur: document.getElementById('karyawan-hariLibur').value,
+          timestamp: Date.now()
+        };
+        setDoc(docPath('karyawan', id), data).then(() => {
+          ui.closeModal();
+          ui.toast('Data Karyawan Tersimpan', 'success');
+        });
+      },
+      updateAbsen(karyawanId, status) {
+        if (!state.userId) return;
+        const id = `${karyawanId}_${getToday()}`;
+        setDoc(docPath('absensi', id), {
+          id, karyawanId, status, tanggal: getToday(), timestamp: Date.now()
+        });
+      },
+      saveMaster(type, value) {
+        if(!state.userId || !value.trim()) return;
+        const id = 'master_data';
+        const currentData = state.master[type] || [];
+        if(!currentData.includes(value.trim())) {
+          currentData.push(value.trim());
+          setDoc(docPath('master', id), { [type]: currentData }, {merge: true})
+            .then(() => ui.renderMasterSettings(type));
+        }
+      },
+      deleteMaster(type, value) {
+        if(!state.userId) return;
+        const id = 'master_data';
+        const currentData = (state.master[type] || []).filter(v => v !== value);
+        setDoc(docPath('master', id), { [type]: currentData }, {merge: true})
+          .then(() => ui.renderMasterSettings(type));
+      },
+      deleteProduksi(id) {
+        if (!state.userId) return;
+        deleteDoc(docPath('produksi', id)).then(() => {
+          ui.toast('Data produksi dihapus', 'success');
+          ui.closeModal();
+        }).catch(e => {
+          console.error(e);
+          ui.toast('Gagal menghapus data', 'error');
+          ui.closeModal();
+        });
+      },
+      saveProduksiWizard() {
+        if (!state.userId) return;
+        if (!state.currentAdmin) { ui.showAdminSelector(); return ui.toast('Pilih Admin Aktif terlebih dahulu!', 'error'); }
+
+        const { karyawanId, corak, kodeCorak, jenisLabel, grid, pcs } = state.form;
+        const k = state.karyawan.find(x => x.id === karyawanId);
+        const isLabelOp = k && k.statusOp === 'Op. Jahit Label';
+
+        if (!karyawanId || !corak || !kodeCorak || !grid || !pcs || pcs <= 0 || (isLabelOp && !jenisLabel)) {
+           return ui.toast('Data belum lengkap!', 'error');
+        }
+        
+        const data = { 
+          karyawanId, karyawanNama: k.nama, corak, kodeCorak, jenisLabel: (isLabelOp ? jenisLabel : ''), grid, 
+          pcs: Number(pcs), kodi: (Number(pcs) / 20).toFixed(2), adminName: state.currentAdmin 
+        };
+        const id = crypto.randomUUID();
+        
+        const btn = document.getElementById('btn-simpan-wizard');
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...'; btn.disabled = true; }
+
+        setDoc(docPath('produksi', id), { id, ...data, tanggal: getToday(), timestamp: Date.now() })
+        .then(() => {
+          ui.toast('Data produksi tersimpan', 'success');
+          state.form.step = 1;
+          state.form.corak = '';
+          state.form.kodeCorak = '';
+          state.form.jenisLabel = '';
+          state.form.grid = '';
+          state.form.pcs = '';
+          ui.renderProduksi();
+        }).catch(e => {
+          ui.toast('Error menyimpan', 'error');
+          if (btn) { btn.innerHTML = '<i class="fas fa-save"></i> Simpan Data Produksi'; btn.disabled = false; }
+        });
+      },
+      async resetDataHariIni() {
+        if (!state.userId) return;
+        const today = getToday();
+        
+        // Find all production IDs for today from the local state
+        const docsToDelete = state.produksi.filter(p => p.tanggal === today).map(p => p.id);
+        
+        if (docsToDelete.length === 0) {
+            ui.toast('Tidak ada data produksi hari ini untuk direset', 'success');
+            ui.closeModal();
+            return;
+        }
+
+        const btn = document.getElementById('btn-reset-confirm');
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mereset...'; btn.disabled = true; }
+
+        try {
+            // Delete documents sequentially to avoid complex batched writes setup for this context
+            for (const id of docsToDelete) {
+                 await deleteDoc(docPath('produksi', id));
+            }
+            ui.toast(`Berhasil mereset ${docsToDelete.length} data produksi hari ini`, 'success');
+            ui.closeModal();
+        } catch (error) {
+            console.error("Error resetting data:", error);
+            ui.toast('Gagal mereset data', 'error');
+            if (btn) { btn.innerHTML = 'Ya, Reset Data'; btn.disabled = false; }
+        }
+      }
+    };
+
+    window.ui = {
+      toast(msg, type='success') {
+        const c = document.getElementById('toast-container');
+        const t = document.createElement('div');
+        const color = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+        const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+        t.className = `${color} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 fade-in font-bold text-sm pointer-events-auto`;
+        t.innerHTML = `<i class="fas ${icon}"></i> ${msg}`;
+        c.appendChild(t);
+        setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+      },
+      closeModal() { document.getElementById('modal-container').innerHTML = ''; },
+      
+      showDeleteProduksiConfirmation(id) {
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[110] fade-in">
+            <div class="bg-surface w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-red-900/50">
+              <div class="bg-red-900/20 p-5 flex flex-col items-center text-center border-b border-red-900/30">
+                <div class="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center text-3xl mb-3">
+                  <i class="fas fa-trash-alt"></i>
+                </div>
+                <h3 class="font-black text-white text-lg">Hapus Data Produksi?</h3>
+                <p class="text-xs text-gray-400 mt-2">Data ini akan dihapus permanen dari sistem dan otomatis mengurangi perolehan total.</p>
+              </div>
+              <div class="p-5 grid grid-cols-2 gap-3">
+                <button onclick="ui.closeModal()" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition-colors">Batal</button>
+                <button onclick="api.deleteProduksi('${id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">Ya, Hapus</button>
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      switchTab(t) {
+        state.tab = t;
+        ['karyawan', 'produksi', 'laporan'].forEach(id => {
+          const btn = document.getElementById(`nav-${id}`);
+          if (btn && id !== 'produksi') {
+            btn.className = `flex flex-col items-center gap-1.5 w-16 transition-colors ${t === id ? 'text-primary' : 'text-gray-500 hover:text-gray-400'}`;
+          }
+          document.getElementById(`view-${id}`).classList.toggle('hidden', t !== id);
+        });
+        
+        if (t === 'karyawan') this.renderKaryawan();
+        if (t === 'produksi') this.renderProduksi();
+        if (t === 'laporan') this.renderLaporan();
+      },
+
+      updateAdminUI() {
+        const av = document.getElementById('admin-avatar');
+        const nm = document.getElementById('admin-name');
+        if (state.currentAdmin) {
+          av.className = 'w-7 h-7 rounded-full bg-primary/20 border border-primary text-primary flex items-center justify-center text-[10px] font-bold uppercase';
+          av.innerHTML = state.currentAdmin.substring(0,2);
+          nm.className = 'text-xs font-bold text-gray-300';
+          nm.innerText = state.currentAdmin;
+        } else {
+          av.className = 'w-7 h-7 rounded-full bg-red-500/20 border border-red-500 text-red-500 flex items-center justify-center animate-pulse';
+          av.innerHTML = '<i class="fas fa-exclamation text-[10px]"></i>';
+          nm.className = 'text-xs font-bold text-red-400';
+          nm.innerText = 'Pilih Admin';
+        }
+      },
+
+      showAdminSelector() {
+        const mAdmin = state.master.admin && state.master.admin.length > 0 ? state.master.admin : defaultMaster.admin;
+        const adminButtonsHtml = mAdmin.map(a => `
+          <button onclick="ui.setAdmin('${a}')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl text-left border ${state.currentAdmin === a ? 'border-primary' : 'border-gray-700'} flex items-center gap-3 transition-colors">
+            <div class="w-10 h-10 rounded-full ${state.currentAdmin === a ? 'bg-primary text-gray-900' : 'bg-gray-700 text-white'} flex items-center justify-center font-bold">
+              ${a.substring(0,2).toUpperCase()}
+            </div>
+            <span class="font-bold text-white flex-1">${a}</span>
+            ${state.currentAdmin === a ? '<i class="fas fa-check-circle text-primary text-xl"></i>' : ''}
+          </button>
+        `).join('');
+
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[100] fade-in">
+            <div class="bg-surface w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-gray-800">
+              <div class="bg-gray-900 p-5 flex justify-between items-center border-b border-gray-800">
+                <h3 class="font-black text-white text-lg"><i class="fas fa-user-shield text-primary mr-2"></i>Pilih Admin Aktif</h3>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+              </div>
+              <div class="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+                ${adminButtonsHtml}
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      setAdmin(name) {
+        state.currentAdmin = name;
+        localStorage.setItem('checker_active_admin', name);
+        this.updateAdminUI();
+        this.closeModal();
+        this.toast(`Admin aktif: ${name}`);
+      },
+
+      showSettings() {
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[100] fade-in">
+            <div class="bg-surface w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-gray-800 flex flex-col max-h-[90vh]">
+              <div class="bg-gray-900 p-5 flex justify-between items-center border-b border-gray-800">
+                <h3 class="font-black text-white text-lg"><i class="fas fa-cog text-primary mr-2"></i>Pengaturan</h3>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+              </div>
+              <div class="p-5 space-y-4 overflow-y-auto hide-scrollbar">
+                <button onclick="ui.renderMasterSettings('admin')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center justify-between border border-gray-700 transition-colors">
+                  <div class="flex items-center gap-3 text-white font-bold"><i class="fas fa-users-cog text-primary w-5"></i> Kelola Admin</div>
+                  <i class="fas fa-chevron-right text-gray-500"></i>
+                </button>
+                <button onclick="ui.renderMasterSettings('corak')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center justify-between border border-gray-700 transition-colors">
+                  <div class="flex items-center gap-3 text-white font-bold"><i class="fas fa-swatchbook text-primary w-5"></i> Master Corak</div>
+                  <i class="fas fa-chevron-right text-gray-500"></i>
+                </button>
+                <button onclick="ui.renderMasterSettings('kode')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center justify-between border border-gray-700 transition-colors">
+                  <div class="flex items-center gap-3 text-white font-bold"><i class="fas fa-tags text-primary w-5"></i> Master Kode</div>
+                  <i class="fas fa-chevron-right text-gray-500"></i>
+                </button>
+                <button onclick="ui.renderMasterSettings('label')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center justify-between border border-gray-700 transition-colors">
+                  <div class="flex items-center gap-3 text-white font-bold"><i class="fas fa-tag text-primary w-5"></i> Master Label</div>
+                  <i class="fas fa-chevron-right text-gray-500"></i>
+                </button>
+                <button onclick="ui.renderMasterSettings('grid')" class="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center justify-between border border-gray-700 transition-colors">
+                  <div class="flex items-center gap-3 text-white font-bold"><i class="fas fa-border-all text-primary w-5"></i> Master Grid Lokasi</div>
+                  <i class="fas fa-chevron-right text-gray-500"></i>
+                </button>
+                <div class="h-px bg-gray-800 my-2"></div>
+                <button onclick="ui.showResetConfirmation()" class="w-full bg-red-900/20 hover:bg-red-900/40 border border-red-900/50 p-4 rounded-xl flex items-center justify-between transition-colors">
+                  <div class="flex items-center gap-3 text-red-400 font-bold"><i class="fas fa-trash-alt w-5"></i> Reset Data Hari Ini</div>
+                  <i class="fas fa-chevron-right text-red-900/50"></i>
+                </button>
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      showResetConfirmation() {
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[110] fade-in">
+            <div class="bg-surface w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-red-900/50">
+              <div class="bg-red-900/20 p-5 flex flex-col items-center text-center border-b border-red-900/30">
+                <div class="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center text-3xl mb-3">
+                  <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3 class="font-black text-white text-lg">Reset Data Hari Ini?</h3>
+                <p class="text-xs text-gray-400 mt-2">Anda yakin ingin menghapus <b>seluruh</b> data produksi yang diinput <b>hari ini</b>? Data hari sebelumnya dan master data tidak akan terhapus. Tindakan ini tidak dapat dibatalkan.</p>
+              </div>
+              <div class="p-5 grid grid-cols-2 gap-3">
+                <button onclick="ui.closeModal()" class="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition-colors">Batal</button>
+                <button onclick="api.resetDataHariIni()" id="btn-reset-confirm" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">Ya, Reset</button>
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      getAutoStatus(karyawan) {
+        const todayNum = new Date().getDay(); 
+        const mapHari = { "Minggu": 0, "Senin": 1, "Selasa": 2, "Rabu": 3, "Kamis": 4, "Jumat": 5, "Sabtu": 6 };
+        const isLibur = mapHari[karyawan.hariLibur] === todayNum;
+        
+        const todayDate = getToday();
+        const explicitAbsen = state.absensi.find(a => a.karyawanId === karyawan.id && a.tanggal === todayDate);
+        
+        if (explicitAbsen) return explicitAbsen.status;
+        return isLibur ? 'Libur Harian' : 'Hadir';
+      },
+
+      renderKaryawan() {
+        const container = document.getElementById('view-karyawan');
+        const activeKaryawan = state.karyawan.filter(k => !k.deleted);
+        
+        let html = `
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-black text-white">Database Karyawan</h2>
+            <button onclick="ui.showFormKaryawan()" class="bg-primary text-gray-900 font-bold px-4 py-2.5 rounded-xl shadow-[0_4px_15px_rgba(45,220,203,0.3)] hover:scale-105 transition-transform flex items-center gap-2">
+              <i class="fas fa-user-plus"></i> Tambah
+            </button>
+          </div>
+          <div class="space-y-4 pb-10">
+        `;
+
+        if (activeKaryawan.length === 0) {
+          html += `<div class="text-center py-10 text-gray-500"><i class="fas fa-users-slash text-4xl mb-3"></i><p>Belum ada data karyawan.</p></div>`;
+        } else {
+          activeKaryawan.forEach(k => {
+            const isLabel = k.statusOp === 'Op. Jahit Label';
+            const kColor = isLabel ? 'blue' : 'green';
+            const currentStatus = this.getAutoStatus(k);
+            
+            html += `
+              <div class="bg-surface rounded-2xl p-4 border border-gray-800 shadow-md">
+                <div class="flex justify-between items-start mb-3 border-b border-gray-800 pb-3">
+                  <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-full bg-gradient-to-br from-gray-800 to-gray-900 border-2 border-${kColor}-500 flex items-center justify-center text-xl font-bold text-${kColor}-500 shadow-inner shrink-0">
+                      ${k.nama.charAt(0).toUpperCase()}
+                    </div>
+                    <div class="flex flex-col items-start gap-0.5">
+                      <h3 class="text-lg font-bold text-white leading-none">${k.nama}</h3>
+                      <p class="text-[10px] text-gray-400 font-mono"><i class="fas fa-id-badge mr-1"></i>${k.nik}</p>
+                      <span class="text-[9px] font-bold bg-${kColor}-500/20 text-${kColor}-400 px-1.5 py-0.5 rounded border border-${kColor}-500/30">${k.statusOp}</span>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button onclick="ui.showFormKaryawan('${k.id}')" class="w-8 h-8 rounded-full bg-gray-800 text-gray-400 hover:text-primary hover:bg-gray-700 flex items-center justify-center transition-colors"><i class="fas fa-pen text-xs"></i></button>
+                    <button onclick="api.deleteKaryawan('${k.id}')" class="w-8 h-8 rounded-full bg-gray-800 text-gray-400 hover:text-red-400 hover:bg-gray-700 flex items-center justify-center transition-colors"><i class="fas fa-trash text-xs"></i></button>
+                  </div>
+                </div>
+                
+                <div class="flex justify-between items-center bg-gray-900/50 p-2 rounded-xl border border-gray-800/50">
+                  <select onchange="api.updateAbsen('${k.id}', this.value)" class="bg-gray-800 border border-gray-700 text-xs text-white rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary">
+                    <option value="Hadir" ${currentStatus === 'Hadir' ? 'selected' : ''}>Hadir</option>
+                    <option value="Libur Harian" ${currentStatus === 'Libur Harian' ? 'selected' : ''}>Libur Harian</option>
+                    <option value="Sakit" ${currentStatus === 'Sakit' ? 'selected' : ''}>Sakit</option>
+                    <option value="Izin" ${currentStatus === 'Izin' ? 'selected' : ''}>Izin</option>
+                    <option value="Alpha" ${currentStatus === 'Alpha' ? 'selected' : ''}>Alpha</option>
+                    <option value="Cuti" ${currentStatus === 'Cuti' ? 'selected' : ''}>Cuti</option>
+                  </select>
+                  <div class="text-[10px] text-gray-500 font-bold bg-gray-800 px-2 py-1 rounded-lg border border-gray-700"><i class="far fa-calendar-alt mr-1 text-yellow-500"></i>${k.hariLibur}</div>
+                </div>
+              </div>
+            `;
+          });
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+      },
+
+      showFormKaryawan(id = null) {
+        const k = id ? state.karyawan.find(x => x.id === id) : {id:'', nama:'', nik:'', statusOp:'Op. Jahit Polos', hariLibur:'Minggu'};
+        const title = id ? 'Edit Karyawan' : 'Tambah Karyawan';
+        
+        const hariLiburOptions = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(d => `<option value="${d}" ${k.hariLibur === d ? 'selected' : ''}>${d}</option>`).join('');
+
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[100] fade-in">
+            <div class="bg-surface w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-gray-800">
+              <div class="bg-gray-900 p-5 flex justify-between items-center border-b border-gray-800">
+                <h3 class="font-black text-white text-lg">${title}</h3>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+              </div>
+              <form onsubmit="api.saveKaryawan(event)" class="p-5 space-y-4">
+                <input type="hidden" id="karyawan-id" value="${k.id}">
+                <div>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Nama Lengkap</label>
+                  <input type="text" id="karyawan-nama" required value="${k.nama}" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">NIK / ID</label>
+                  <input type="text" id="karyawan-nik" required value="${k.nik}" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Posisi / Status</label>
+                  <select id="karyawan-statusOp" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="Op. Jahit Polos" ${k.statusOp === 'Op. Jahit Polos' ? 'selected' : ''}>Op. Jahit Polos</option>
+                    <option value="Op. Jahit Label" ${k.statusOp === 'Op. Jahit Label' ? 'selected' : ''}>Op. Jahit Label</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Hari Libur Mingguan</label>
+                  <select id="karyawan-hariLibur" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                    ${hariLiburOptions}
+                  </select>
+                </div>
+                <button type="submit" class="w-full bg-primary text-gray-900 font-bold py-3.5 rounded-xl mt-6 shadow-[0_4px_15px_rgba(45,220,203,0.3)] hover:scale-[1.02] transition-transform">Simpan Data</button>
+              </form>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      setFormOperator(id) {
+        state.form = { karyawanId: id, step: 1, corak: '', kodeCorak: '', jenisLabel: '', grid: '', pcs: '' };
+        this.renderProduksi();
+      },
+
+      setFormStep(s) {
+        state.form.step = s;
+        this.renderProduksi();
+      },
+
+      selectWizardData(field, val) {
+        state.form[field] = val;
+        const { karyawanId, step } = state.form;
+        const k = state.karyawan.find(x => x.id === karyawanId);
+        const isLabelOp = k && k.statusOp === 'Op. Jahit Label';
+        
+        if (field === 'corak') {
+          state.form.step = 2;
+          // Reset Kode Corak jika tidak valid untuk Corak yang baru dipilih
+          const allowedKode = pemetaanCorakKode[val] || [];
+          if (state.form.kodeCorak && !allowedKode.includes(state.form.kodeCorak)) {
+            state.form.kodeCorak = '';
+          }
+        }
+        else if (field === 'kodeCorak') state.form.step = 3;
+        else if (field === 'jenisLabel') state.form.step = 4;
+        else if (field === 'grid') state.form.step = isLabelOp ? 5 : 4;
+        
+        this.renderProduksi();
+      },
+
+      updateWizardPcs(val) {
+        state.form.pcs = val;
+        const pcsNum = Number(val) || 0;
+        const kodi = (pcsNum / 20).toFixed(2);
+        
+        const kodiEl = document.getElementById('preview-kodi-wizard');
+        if (kodiEl) kodiEl.innerText = kodi;
+        
+        const btn = document.getElementById('btn-simpan-wizard');
+        if (btn) {
+          const selectedKaryawan = state.karyawan.find(k => k.id === state.form.karyawanId);
+          const isLabelOp = selectedKaryawan && selectedKaryawan.statusOp === 'Op. Jahit Label';
+          const isValid = pcsNum > 0 && state.form.corak && state.form.kodeCorak && state.form.grid && (!isLabelOp || state.form.jenisLabel);
+          
+          if (isValid) {
+            btn.className = 'w-full text-lg font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 bg-primary text-gray-900 shadow-[0_5px_20px_rgba(45,220,203,0.3)] hover:scale-[1.02] cursor-pointer';
+          } else {
+            btn.className = 'w-full text-lg font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed';
+          }
+        }
+      },
+
+      addWizardPcs(add) {
+        const current = Number(state.form.pcs) || 0;
+        const total = current + add;
+        const input = document.getElementById('input-pcs-wizard');
+        if (input) {
+          input.value = total;
+          this.updateWizardPcs(total);
+        } else {
+          this.updateWizardPcs(total);
+        }
+      },
+
+      showPencarianKaryawanModal() {
+        const activeKaryawan = state.karyawan.filter(k => !k.deleted);
+        const searchResultsHtml = activeKaryawan.map(k => `
+          <button onclick="ui.setFormOperator('${k.id}'); ui.closeModal();" class="w-full bg-gray-900 hover:bg-gray-800 p-3 rounded-xl border border-gray-800 flex items-center gap-3 transition-colors text-left">
+            <div class="w-10 h-10 shrink-0 rounded-full bg-gray-800 flex items-center justify-center font-bold text-white border border-gray-700">${k.nama.charAt(0).toUpperCase()}</div>
+            <div>
+              <h4 class="text-white font-bold">${k.nama}</h4>
+              <p class="text-[10px] text-gray-500">${k.statusOp}</p>
+            </div>
+          </button>
+        `).join('');
+
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center p-5 pt-10 z-[100] fade-in">
+            <div class="w-full max-w-sm mb-4">
+              <input type="text" id="search-karyawan-input" oninput="ui.filterKaryawanSearch(this.value)" placeholder="Cari nama karyawan..." class="w-full bg-surface border-2 border-primary rounded-xl px-4 py-4 text-white text-lg focus:outline-none shadow-[0_0_20px_rgba(45,220,203,0.2)]">
+            </div>
+            <div class="w-full max-w-sm bg-surface rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex flex-col max-h-[60vh]">
+              <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <h3 class="font-bold text-gray-300 text-sm">Hasil Pencarian</h3>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+              </div>
+              <div id="search-karyawan-results" class="p-2 space-y-2 overflow-y-auto hide-scrollbar flex-1">
+                ${searchResultsHtml}
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+        setTimeout(() => document.getElementById('search-karyawan-input')?.focus(), 100);
+      },
+
+      filterKaryawanSearch(q) {
+        const query = q.toLowerCase();
+        const activeKaryawan = state.karyawan.filter(k => !k.deleted && k.nama.toLowerCase().includes(query));
+        const res = document.getElementById('search-karyawan-results');
+        if(!res) return;
+        res.innerHTML = activeKaryawan.map(k => `
+          <button onclick="ui.setFormOperator('${k.id}'); ui.closeModal();" class="w-full bg-gray-900 hover:bg-gray-800 p-3 rounded-xl border border-gray-800 flex items-center gap-3 transition-colors text-left">
+            <div class="w-10 h-10 shrink-0 rounded-full bg-gray-800 flex items-center justify-center font-bold text-white border border-gray-700">${k.nama.charAt(0).toUpperCase()}</div>
+            <div>
+              <h4 class="text-white font-bold">${k.nama}</h4>
+              <p class="text-[10px] text-gray-500">${k.statusOp}</p>
+            </div>
+          </button>
+        `).join('');
+      },
+
+      renderProduksi() {
+        const container = document.getElementById('view-produksi');
+        const today = getToday();
+        const prodToday = state.produksi.filter(p => p.tanggal === today).sort((a,b) => b.timestamp - a.timestamp);
+
+        const { karyawanId, step, corak, kodeCorak, jenisLabel, grid, pcs } = state.form;
+        const selectedKaryawan = state.karyawan.find(k => k.id === karyawanId);
+        const selectedProd = selectedKaryawan ? prodToday.filter(p => p.karyawanId === selectedKaryawan.id) : [];
+        const selectedPcs = selectedProd.reduce((sum, p) => sum + Number(p.pcs || 0), 0);
+        const selectedKodi = selectedProd.reduce((sum, p) => sum + Number(p.kodi || 0), 0);
+
+        const isLabelOp = selectedKaryawan && selectedKaryawan.statusOp === 'Op. Jahit Label';
+
+        const mCorak = state.master.corak && state.master.corak.length > 0 ? state.master.corak : defaultMaster.corak;
+        const mKode = state.master.kode && state.master.kode.length > 0 ? state.master.kode : defaultMaster.kode;
+        const mGrid = state.master.grid && state.master.grid.length > 0 ? state.master.grid : defaultMaster.grid;
+        const mLabel = state.master.label && state.master.label.length > 0 ? state.master.label : defaultMaster.label;
+
+        const getNavClass = (s) => step === s ? 'text-primary' : (step > s ? 'text-primary/70' : 'text-gray-500 opacity-50');
+
+        let html = `
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-white flex items-center"><i class="fas fa-cash-register mr-2 text-primary"></i>Input Produksi</h2>
+            <button type="button" onclick="ui.showPencarianKaryawanModal()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-3 py-2 rounded-lg border border-gray-700 transition-colors flex items-center gap-2"><i class="fas fa-search"></i> Ganti Operator</button>
+          </div>
+        `;
+
+        if (!selectedKaryawan) {
+          const activeK = state.karyawan.filter(k => !k.deleted);
+          const karyawanOptions = activeK.map(k => `<option value="${k.id}">${k.nama} (${k.statusOp})</option>`).join('');
+          html += `
+            <div class="bg-surface p-5 rounded-2xl shadow-md mb-5 border border-gray-800">
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Operator Karyawan</label>
+              <div class="relative">
+                <select required onchange="ui.setFormOperator(this.value)" class="w-full bg-gray-900 border border-gray-600 rounded-xl py-3.5 px-4 text-white font-medium focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none appearance-none cursor-pointer">
+                  <option value="" disabled selected>Pilih Karyawan Operator...</option>
+                  ${karyawanOptions}
+                </select>
+                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"></i>
+              </div>
+            </div>`;
+        } else {
+          const themeColor = isLabelOp ? 'blue' : 'green';
+          
+          html += `
+            <div class="rounded-2xl p-4 border-2 border-${themeColor}-500 bg-gray-900 shadow-[0_0_15px_rgba(${isLabelOp ? '59,130,246' : '34,197,94'},0.15)] relative overflow-hidden mb-5">
+              <div class="absolute inset-y-0 left-0 w-1.5 bg-${themeColor}-500"></div>
+              <div class="flex items-center gap-4 pr-[110px] pl-2">
+                <div class="w-14 h-14 shrink-0 rounded-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-2xl font-bold border-2 border-${themeColor}-500 text-${themeColor}-500 shadow-inner">
+                  ${selectedKaryawan.nama.charAt(0).toUpperCase()}
+                </div>
+                <div class="min-w-0 flex flex-col items-start gap-1">
+                  <h3 class="text-xl font-bold text-white leading-tight truncate tracking-wide">${selectedKaryawan.nama}</h3>
+                  <p class="text-[10px] text-gray-400 font-mono"><i class="fas fa-id-badge mr-1"></i>${selectedKaryawan.nik}</p>
+                  <span class="inline-block text-[10px] font-bold bg-${themeColor}-500/20 border border-${themeColor}-500/40 text-${themeColor}-400 px-2 py-0.5 rounded truncate max-w-[150px]">${selectedKaryawan.statusOp}</span>
+                </div>
+              </div>
+              <div class="absolute right-3 top-1/2 -translate-y-1/2 w-[90px] bg-gray-800 border border-${themeColor}-500/30 rounded-xl p-2 text-center shadow-inner">
+                <p class="text-[8px] text-${themeColor}-400 uppercase font-bold tracking-wider">Perolehan</p>
+                <p class="text-2xl font-black text-${themeColor}-400 leading-none mt-1">${selectedPcs}</p>
+                <p class="text-[9px] text-gray-500 font-bold">PCS</p>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <p class="text-sm font-black text-secondary leading-none">${selectedKodi.toFixed(2)}</p>
+                <p class="text-[7px] text-gray-500 font-bold uppercase mt-0.5">Kodi</p>
+              </div>
+            </div>
+            
+            <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-5 relative">
+              
+              <!-- Navigasi Alur -->
+              <div class="flex justify-between items-center px-2 py-3 bg-gray-900 rounded-xl border border-gray-700 mb-6 text-[10px] font-bold uppercase tracking-wider">
+                <button onclick="ui.setFormStep(1)" class="flex items-center gap-1.5 transition-colors ${getNavClass(1)} hover:text-primary"><i class="fas fa-swatchbook"></i> Corak</button>
+                <i class="fas fa-chevron-right text-gray-600 text-[8px]"></i>
+                <button onclick="ui.setFormStep(2)" class="flex items-center gap-1.5 transition-colors ${getNavClass(2)} hover:text-primary"><i class="fas fa-tags"></i> Kode</button>
+                <i class="fas fa-chevron-right text-gray-600 text-[8px]"></i>
+                ${isLabelOp ? `
+                <button onclick="ui.setFormStep(3)" class="flex items-center gap-1.5 transition-colors ${getNavClass(3)} hover:text-primary"><i class="fas fa-tag"></i> Label</button>
+                <i class="fas fa-chevron-right text-gray-600 text-[8px]"></i>
+                ` : ''}
+                <button onclick="ui.setFormStep(${isLabelOp ? 4 : 3})" class="flex items-center gap-1.5 transition-colors ${getNavClass(isLabelOp ? 4 : 3)} hover:text-primary"><i class="fas fa-border-all"></i> Grid</button>
+                <i class="fas fa-chevron-right text-gray-600 text-[8px]"></i>
+                <button onclick="ui.setFormStep(${isLabelOp ? 5 : 4})" class="flex items-center gap-1.5 transition-colors ${getNavClass(isLabelOp ? 5 : 4)} hover:text-primary"><i class="fas fa-calculator"></i> Jumlah</button>
+              </div>
+
+              <!-- Area Konten (Animasi) -->
+              <div id="wizard-content" class="min-h-[300px]">
+          `;
+
+          const gridStep = isLabelOp ? 4 : 3;
+          const labelStep = isLabelOp ? 3 : -1;
+          const jumlahStep = isLabelOp ? 5 : 4;
+
+          if (step === 1) {
+            const btns = mCorak.map(c => `<button onclick="ui.selectWizardData('corak', '${c}')" class="bg-gray-800 hover:bg-gray-700 border ${corak === c ? 'border-primary text-primary bg-primary/10' : 'border-gray-700 text-white'} py-3 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-sm">${c}</button>`).join('');
+            html += `
+              <div class="fade-in">
+                <p class="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Pilih Corak Utama</p>
+                <div class="grid grid-cols-3 gap-3 max-h-[350px] overflow-y-auto hide-scrollbar pb-2 px-1">${btns}</div>
+              </div>
+            `;
+          }
+          else if (step === 2) {
+            // Filter kode berdasarkan corak yang dipilih
+            let filteredKode = [];
+            if (corak && pemetaanCorakKode[corak]) {
+              filteredKode = mKode.filter(c => pemetaanCorakKode[corak].includes(c));
+            }
+
+            html += `
+              <div class="fade-in">
+                <p class="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Pilih Kode Corak</p>
+                <div class="grid grid-cols-3 gap-3 max-h-[350px] overflow-y-auto hide-scrollbar pb-2 px-1">
+                  ${filteredKode.length > 0 ? filteredKode.map(c => `
+                    <button onclick="ui.selectWizardData('kodeCorak', '${c}')" class="bg-gray-800 hover:bg-gray-700 border ${kodeCorak === c ? 'border-primary text-primary bg-primary/10' : 'border-gray-700 text-white'} py-3 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-sm">
+                      ${c}
+                    </button>
+                  `).join('') : '<p class="col-span-3 text-center text-gray-500 text-xs py-4">Tidak ada kode untuk corak ini.</p>'}
+                </div>
+              </div>
+            `;
+          }
+          else if (step === labelStep) {
+            const btns = mLabel.map(c => `<button onclick="ui.selectWizardData('jenisLabel', '${c}')" class="bg-gray-800 hover:bg-gray-700 border ${jenisLabel === c ? 'border-primary text-primary bg-primary/10' : 'border-gray-700 text-white'} py-3 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-sm">${c}</button>`).join('');
+            html += `
+              <div class="fade-in">
+                <p class="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Pilih Jenis Label</p>
+                <div class="grid grid-cols-3 gap-3 max-h-[350px] overflow-y-auto hide-scrollbar pb-2 px-1">${btns}</div>
+              </div>
+            `;
+          }
+          else if (step === gridStep) {
+            const btns = mGrid.map(c => `<button onclick="ui.selectWizardData('grid', '${c}')" class="bg-gray-800 hover:bg-gray-700 border ${grid === c ? 'border-primary text-primary bg-primary/10' : 'border-gray-700 text-white'} py-3 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-sm">${c}</button>`).join('');
+            html += `
+              <div class="fade-in">
+                <p class="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Pilih Grid Penyimpanan</p>
+                <div class="grid grid-cols-4 gap-3 max-h-[350px] overflow-y-auto hide-scrollbar pb-2 px-1">${btns}</div>
+              </div>
+            `;
+          }
+          else if (step === jumlahStep) {
+            const isValid = pcs > 0 && corak && kodeCorak && grid && (!isLabelOp || jenisLabel);
+            const btnClass = isValid 
+              ? 'bg-primary text-gray-900 shadow-[0_5px_20px_rgba(45,220,203,0.3)] hover:scale-[1.02] cursor-pointer' 
+              : 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed';
+            
+            html += `
+              <div class="fade-in">
+                <p class="text-center text-[10px] text-gray-400 mb-5">
+                  <span class="${corak ? 'text-primary font-bold' : ''}">${corak || 'Corak'}</span> <i class="fas fa-chevron-right text-[8px] mx-1 text-gray-600"></i> 
+                  <span class="${kodeCorak ? 'text-gray-200 font-bold' : ''}">${kodeCorak || 'Kode'}</span>
+                  ${isLabelOp ? `<i class="fas fa-chevron-right text-[8px] mx-1 text-gray-600"></i> <span class="${jenisLabel ? 'text-blue-400 font-bold' : ''}">${jenisLabel || 'Label'}</span>` : ''}
+                  <i class="fas fa-chevron-right text-[8px] mx-1 text-gray-600"></i> <span class="${grid ? 'text-gray-400 font-bold' : ''}">${grid ? 'Grid ' + grid : 'Grid'}</span>
+                </p>
+                
+                <div class="mb-5">
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 text-center">Jumlah (PCS)</label>
+                  <input type="number" id="input-pcs-wizard" value="${pcs}" min="1" class="w-full bg-gray-900 border border-gray-600 rounded-xl p-4 text-center text-white text-3xl font-black focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder-gray-700" placeholder="0" oninput="ui.updateWizardPcs(this.value)">
+                  
+                  <div class="grid grid-cols-3 gap-3 mt-4">
+                    <button onclick="ui.addWizardPcs(20)" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 py-2 rounded-xl font-bold text-lg active:scale-95 transition-transform">+20</button>
+                    <button onclick="ui.addWizardPcs(40)" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 py-2 rounded-xl font-bold text-lg active:scale-95 transition-transform">+40</button>
+                    <button onclick="ui.addWizardPcs(60)" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 py-2 rounded-xl font-bold text-lg active:scale-95 transition-transform">+60</button>
+                  </div>
+                </div>
+
+                <div class="bg-gray-800/80 p-3 rounded-xl flex justify-between items-center border border-gray-700 mb-5">
+                  <span class="text-sm text-gray-400 font-medium">Konversi Estimasi</span>
+                  <span class="text-xl font-black text-secondary"><span id="preview-kodi-wizard">${(Number(pcs)/20 || 0).toFixed(2)}</span> <span class="text-xs text-gray-500 font-bold uppercase">Kodi</span></span>
+                </div>
+                
+                <button onclick="api.saveProduksiWizard()" id="btn-simpan-wizard" class="w-full text-lg font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 ${btnClass}">
+                  <i class="fas fa-save"></i> Simpan Data Produksi
+                </button>
+              </div>
+            `;
+          }
+          
+          html += `</div></div>`;
+        }
+
+        html += `
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700/50 pb-3">
+              <h3 class="text-base font-bold text-white"><i class="fas fa-list-ul mr-2 text-gray-400"></i>Log Hari Ini</h3>
+              <span class="bg-gray-800 text-gray-300 text-xs py-1 px-3 rounded-full font-bold">${prodToday.length} Entry</span>
+            </div>
+            <div class="space-y-3">
+        `;
+
+        if (prodToday.length === 0) {
+          html += `<div class="text-center py-8 bg-gray-900 rounded-xl border border-gray-800"><i class="fas fa-inbox text-3xl text-gray-600 mb-2"></i><p class="text-gray-500 text-sm">Belum ada input produksi.</p></div>`;
+        } else {
+          prodToday.forEach(p => {
+            const time = new Date(p.timestamp).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+            const kInfo = state.karyawan.find(x => x.id === p.karyawanId);
+            const isLabelLog = kInfo && kInfo.statusOp === 'Op. Jahit Label';
+            const pColorLog = isLabelLog ? 'blue' : 'green';
+            
+            html += `
+              <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 shadow-sm flex justify-between items-center relative overflow-hidden group">
+                <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-${pColorLog}-500"></div>
+                <div class="pl-2">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <p class="font-bold text-white text-base">${p.karyawanNama}</p>
+                    <span class="text-[9px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700"><i class="far fa-clock mr-1"></i>${time}</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 mb-1.5 flex-wrap">
+                    <span class="bg-gray-800 px-2 py-1 rounded border border-gray-700 uppercase">${p.corak} <i class="fas fa-caret-right text-gray-600 mx-1"></i> ${p.kodeCorak}${p.jenisLabel ? ` <i class="fas fa-caret-right text-gray-600 mx-1"></i> <span class="text-blue-400">${p.jenisLabel}</span>` : ''}</span>
+                    <span class="bg-gray-800 px-2 py-1 rounded border border-gray-700">GRID: ${p.grid}</span>
+                  </div>
+                  ${p.adminName ? `<div class="text-[9px] text-gray-500 font-mono"><i class="fas fa-user-edit mr-1"></i>Input: ${p.adminName}</div>` : ''}
+                </div>
+                <div class="flex items-center gap-3">
+                  <div class="text-right flex flex-col items-end">
+                    <div class="bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700 min-w-[70px] text-center mb-1 shadow-inner">
+                      <p class="text-xl font-black text-${pColorLog}-400 leading-none">${p.pcs}</p>
+                      <p class="text-[8px] text-gray-500 uppercase font-bold tracking-widest mt-1">PCS</p>
+                    </div>
+                    <p class="text-[10px] font-bold text-secondary">${p.kodi} <span class="text-gray-500 font-normal">Kodi</span></p>
+                  </div>
+                  <button onclick="ui.showDeleteProduksiConfirmation('${p.id}')" class="w-8 h-8 rounded-full bg-red-900/20 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors border border-red-800/50 flex-shrink-0" title="Hapus Data">
+                    <i class="fas fa-trash-alt text-[10px]"></i>
+                  </button>
+                </div>
+              </div>`;
+          });
+        }
+
+        html += `</div></div>`;
+        container.innerHTML = html;
+        
+        if (state.form.step === (isLabelOp ? 5 : 4)) {
+           setTimeout(() => {
+             const inp = document.getElementById('input-pcs-wizard');
+             if(inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+           }, 50);
+        }
+      },
+
+      renderLaporan() {
+        const container = document.getElementById('view-laporan');
+        const today = getToday();
+        const prodToday = state.produksi.filter(p => p.tanggal === today);
+        const activeKaryawan = state.karyawan.filter(k => !k.deleted);
+        
+        const prodPolos = prodToday.filter(p => {
+            const k = state.karyawan.find(x => x.id === p.karyawanId);
+            return k && k.statusOp !== 'Op. Jahit Label';
+        });
+        const prodLabel = prodToday.filter(p => {
+            const k = state.karyawan.find(x => x.id === p.karyawanId);
+            return k && k.statusOp === 'Op. Jahit Label';
+        });
+
+        const totalPcsPolos = prodPolos.reduce((s, p) => s + Number(p.pcs), 0);
+        const totalKodiPolos = (totalPcsPolos / 20).toFixed(2);
+        
+        const totalPcsLabel = prodLabel.reduce((s, p) => s + Number(p.pcs), 0);
+        const totalKodiLabel = (totalPcsLabel / 20).toFixed(2);
+
+        const gridData = {}, corakData = {};
+        prodPolos.forEach(p => {
+          gridData[p.grid] = (gridData[p.grid] || 0) + Number(p.pcs);
+          const ck = `${p.corak} - ${p.kodeCorak}`;
+          corakData[ck] = (corakData[ck] || 0) + Number(p.pcs);
+        });
+
+        const labelData = {};
+        prodLabel.forEach(p => {
+          if (p.jenisLabel) {
+            labelData[p.jenisLabel] = (labelData[p.jenisLabel] || 0) + Number(p.pcs);
+          }
+        });
+
+        let hadirPolos = 0;
+        let hadirLabel = 0;
+        let listTidakHadir = [];
+
+        activeKaryawan.forEach(k => {
+          const status = this.getAutoStatus(k);
+          if (status === 'Hadir') {
+            if (k.statusOp === 'Op. Jahit Label') hadirLabel++;
+            else hadirPolos++;
+          } else {
+            listTidakHadir.push({ nama: k.nama, status: status, pos: k.statusOp });
+          }
+        });
+        const totalHadir = hadirPolos + hadirLabel;
+
+        let htmlTidakHadir = '';
+        if(listTidakHadir.length > 0) {
+            const tkHtml = listTidakHadir.map(k => `
+              <div class="flex justify-between items-center bg-gray-900 p-2.5 rounded-lg border border-gray-800">
+                <div>
+                  <p class="text-xs font-bold text-white">${k.nama}</p>
+                  <p class="text-[9px] text-gray-500">${k.pos}</p>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-1 rounded bg-gray-800 border border-gray-700 text-yellow-500">${k.status}</span>
+              </div>
+            `).join('');
+            htmlTidakHadir = `
+              <div class="mt-2 space-y-2">
+                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Daftar Tidak Hadir:</p>
+                ${tkHtml}
+              </div>`;
+        } else {
+            htmlTidakHadir = '<p class="text-xs text-center text-green-400 font-bold mt-4 bg-green-500/10 p-2 rounded-lg">Semua karyawan hadir hari ini!</p>';
+        }
+
+        const corakItemsHtml = Object.keys(corakData).length > 0 ? Object.entries(corakData).sort((a,b) => b[1]-a[1]).map(([ck, v]) => `
+          <div class="flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-800">
+            <span class="text-xs font-bold text-gray-300">${ck}</span>
+            <div class="text-right">
+              <span class="text-sm font-black text-white">${v} <span class="text-[9px] text-gray-500 font-normal">PCS</span></span>
+              <span class="text-[10px] font-bold text-secondary ml-2">${(v/20).toFixed(2)} Kodi</span>
+            </div>
+          </div>
+        `).join('') : '<p class="text-xs text-gray-500 text-center py-4">Belum ada data</p>';
+
+        const labelItemsHtml = Object.keys(labelData).length > 0 ? Object.entries(labelData).sort((a,b) => b[1]-a[1]).map(([lbl, v]) => `
+          <div class="flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-800">
+            <span class="text-xs font-bold text-gray-300">${lbl}</span>
+            <div class="text-right">
+              <span class="text-sm font-black text-white">${v} <span class="text-[9px] text-gray-500 font-normal">PCS</span></span>
+              <span class="text-[10px] font-bold text-blue-400 ml-2">${(v/20).toFixed(2)} Kodi</span>
+            </div>
+          </div>
+        `).join('') : '<p class="text-xs text-gray-500 text-center py-4">Belum ada data label</p>';
+
+        const kPcsHtml = activeKaryawan.filter(k => k.statusOp !== 'Op. Jahit Label').map(k => {
+          const kPcs = prodPolos.filter(p => p.karyawanId === k.id).reduce((s,p) => s + Number(p.pcs), 0);
+          if(kPcs === 0) return '';
+          return `
+            <button type="button" onclick="ui.showDetailKinerja('${k.id}', '${k.nama}')" class="w-full flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-800 cursor-pointer hover:border-primary/50 transition-all active:scale-95 text-left">
+              <span class="text-sm font-bold text-white">${k.nama}</span>
+              <div class="text-right">
+                <span class="text-sm font-black text-primary">${kPcs} PCS</span>
+                <p class="text-[10px] text-secondary">${(kPcs/20).toFixed(2)} Kodi</p>
+              </div>
+            </button>
+          `;
+        }).join('');
+
+        let html = `
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-black text-white">Dashboard Laporan</h2>
+            <button onclick="ui.showDownloadOptions()" class="bg-indigo-500 text-white font-bold px-4 py-2.5 rounded-xl shadow-[0_4px_15px_rgba(99,102,241,0.3)] hover:scale-105 transition-transform flex items-center gap-2">
+              <i class="fas fa-download"></i> Unduh
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 p-5 rounded-2xl shadow-lg relative overflow-hidden">
+              <div class="absolute -right-4 -top-4 text-green-500/10"><i class="fas fa-tshirt text-7xl"></i></div>
+              <p class="text-[10px] font-bold text-green-400 uppercase tracking-widest mb-1 relative z-10">Hasil Op. Polos</p>
+              <div class="flex items-end gap-2 relative z-10">
+                <h3 class="text-4xl font-black text-white">${totalPcsPolos}</h3>
+                <span class="text-sm font-bold text-gray-400 mb-1">PCS</span>
+              </div>
+              <p class="text-sm font-bold text-secondary mt-1 relative z-10">${totalKodiPolos} Kodi</p>
+            </div>
+            
+            <div class="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 p-5 rounded-2xl shadow-lg relative overflow-hidden">
+              <div class="absolute -right-4 -top-4 text-blue-500/10"><i class="fas fa-tags text-7xl"></i></div>
+              <p class="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1 relative z-10">Hasil Op. Label</p>
+              <div class="flex items-end gap-2 relative z-10">
+                <h3 class="text-4xl font-black text-white">${totalPcsLabel}</h3>
+                <span class="text-sm font-bold text-gray-400 mb-1">PCS</span>
+              </div>
+              <p class="text-sm font-bold text-blue-300 mt-1 relative z-10">${totalKodiLabel} Kodi</p>
+            </div>
+          </div>
+          
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2"><i class="fas fa-layer-group text-primary mr-2"></i>Rincian Corak & Kode (Op. Polos)</h3>
+            <div class="space-y-3 max-h-48 overflow-y-auto hide-scrollbar">
+              ${corakItemsHtml}
+            </div>
+          </div>
+
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2"><i class="fas fa-tags text-blue-400 mr-2"></i>Rincian Jenis Label (Op. Label)</h3>
+            <div class="space-y-3 max-h-48 overflow-y-auto hide-scrollbar">
+              ${labelItemsHtml}
+            </div>
+          </div>
+
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2"><i class="fas fa-chart-bar text-primary mr-2"></i>Distribusi Grid (Op. Polos)</h3>
+            <div class="h-48"><canvas id="gridChart"></canvas></div>
+          </div>
+          
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2"><i class="fas fa-user-clock text-primary mr-2"></i>Detail Absensi Hari Ini</h3>
+            
+            <div class="flex gap-4 mb-4">
+              <div class="flex-1 bg-gray-900 rounded-xl p-3 border border-gray-700 text-center">
+                <p class="text-2xl font-black text-white">${totalHadir}</p>
+                <p class="text-[10px] text-gray-400 font-bold uppercase">Total Hadir</p>
+                <div class="mt-2 flex justify-center gap-3 text-[9px] font-bold">
+                   <span class="text-green-400">Polos: ${hadirPolos}</span>
+                   <span class="text-blue-400">Label: ${hadirLabel}</span>
+                </div>
+              </div>
+              <div class="flex-1 bg-gray-900 rounded-xl p-3 border border-red-900/50 text-center">
+                <p class="text-2xl font-black text-red-500">${listTidakHadir.length}</p>
+                <p class="text-[10px] text-red-400 font-bold uppercase">Tidak Hadir</p>
+              </div>
+            </div>
+
+            ${htmlTidakHadir}
+          </div>
+
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-4 border-b border-gray-700 pb-2"><i class="fas fa-trophy text-primary mr-2"></i>Kinerja Op. Polos</h3>
+            <div class="space-y-3">
+              ${kPcsHtml}
+            </div>
+          </div>
+
+          <div class="bg-surface p-5 rounded-2xl shadow-md border border-gray-800 mb-6">
+            <h3 class="text-sm font-bold text-white mb-3"><i class="fas fa-edit text-primary mr-2"></i>Catatan Laporan Harian</h3>
+            <textarea id="input-catatan" class="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-primary min-h-[100px]" placeholder="Ketik catatan tambahan di sini untuk dicetak di laporan PDF/Excel...">${state.catatanLaporan || ''}</textarea>
+            <button onclick="ui.saveCatatan()" class="w-full mt-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-bold py-2.5 rounded-xl transition-colors text-xs">Simpan Catatan</button>
+          </div>
+        `;
+        container.innerHTML = html;
+        
+        const ctx = document.getElementById('gridChart');
+        if (ctx) {
+          const gLabels = Object.keys(gridData);
+          const gData = Object.values(gridData);
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: gLabels.length ? gLabels : ['-'],
+              datasets: [{
+                label: 'PCS (Op. Polos)',
+                data: gData.length ? gData : [0],
+                backgroundColor: '#2ddccb',
+                borderRadius: 4
+              }]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: { 
+                y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+              }
+            }
+          });
+        }
+      },
+
+      saveCatatan() {
+        const c = document.getElementById('input-catatan').value;
+        state.catatanLaporan = c;
+        this.toast('Catatan tersimpan sementara', 'success');
+      },
+
+      showDetailKinerja(karyawanId, karyawanNama) {
+        const today = getToday();
+        const pList = state.produksi.filter(p => p.tanggal === today && p.karyawanId === karyawanId).sort((a,b) => b.timestamp - a.timestamp);
+        const totalPcs = pList.reduce((s, p) => s + Number(p.pcs), 0);
+        
+        const logsHtml = pList.map(p => {
+            const time = new Date(p.timestamp).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+            return `
+              <div class="bg-gray-900 rounded-xl p-3 border border-gray-700 flex justify-between items-center">
+                <div>
+                  <span class="text-[9px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 mb-1 inline-block"><i class="far fa-clock mr-1"></i> ${time}</span>
+                  <div class="text-[10px] font-bold text-gray-300 mt-1">
+                    <span class="uppercase">${p.corak} <i class="fas fa-caret-right text-gray-600 mx-1"></i> ${p.kodeCorak}</span>
+                  </div>
+                  <div class="text-[9px] font-bold text-primary mt-0.5">GRID: ${p.grid}</div>
+                </div>
+                <div class="text-right bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700 shadow-inner">
+                  <span class="text-lg font-black text-white block leading-none">${p.pcs}</span>
+                  <span class="text-[8px] text-gray-500 font-bold tracking-widest uppercase mt-1 block">PCS</span>
+                </div>
+              </div>
+            `;
+        }).join('');
+
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[100] fade-in">
+            <div class="bg-surface w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-gray-800 flex flex-col max-h-[80vh]">
+              <div class="bg-gray-900 p-5 flex justify-between items-center border-b border-gray-800">
+                <div>
+                  <h3 class="font-black text-white text-lg">Detail Produksi</h3>
+                  <p class="text-xs font-bold text-primary">${karyawanNama}</p>
+                </div>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+              </div>
+              <div class="p-4 bg-gray-800 flex justify-between items-center border-b border-gray-700">
+                 <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Hari Ini</span>
+                 <span class="font-black text-white">${totalPcs} <span class="text-[10px] text-gray-500 font-normal">PCS</span></span>
+              </div>
+              <div class="p-4 space-y-3 overflow-y-auto hide-scrollbar flex-1">
+                ${logsHtml}
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      showDownloadOptions() {
+        const html = `
+          <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 z-[100] fade-in">
+            <div class="bg-surface w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-gray-800">
+              <div class="bg-gray-900 p-5 flex justify-between items-center border-b border-gray-800">
+                <h3 class="font-black text-white text-lg"><i class="fas fa-download text-primary mr-2"></i>Pilih Laporan</h3>
+                <button onclick="ui.closeModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+              </div>
+              <div class="p-5 space-y-4">
+                
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                  <p class="text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider">1. Laporan Produksi</p>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button onclick="ui.exportPDF('produksi'); ui.closeModal();" class="bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button onclick="ui.exportExcel('produksi'); ui.closeModal();" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"><i class="fas fa-file-excel"></i> Excel</button>
+                  </div>
+                </div>
+
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                  <p class="text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider">2. Laporan Absensi</p>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button onclick="ui.exportPDF('absensi'); ui.closeModal();" class="bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button onclick="ui.exportExcel('absensi'); ui.closeModal();" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold text-sm transition-colors flex justify-center items-center gap-2"><i class="fas fa-file-excel"></i> Excel</button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>`;
+        document.getElementById('modal-container').innerHTML = html;
+      },
+
+      exportPDF(type) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const dateStr = getToday();
+        
+        doc.setFontSize(16);
+        doc.text(`CHECKER - Laporan ${type === 'produksi' ? 'Produksi' : 'Absensi'}`, 14, 15);
+        doc.setFontSize(10);
+        doc.text(`Tanggal: ${dateStr}`, 14, 22);
+        
+        let currentY = 30;
+        
+        if (type === 'produksi') {
+            const prodToday = state.produksi.filter(p => p.tanggal === dateStr);
+            const prodPolos = prodToday.filter(p => { const k = state.karyawan.find(x => x.id === p.karyawanId); return k && k.statusOp !== 'Op. Jahit Label'; });
+            const prodLabel = prodToday.filter(p => { const k = state.karyawan.find(x => x.id === p.karyawanId); return k && k.statusOp === 'Op. Jahit Label'; });
+            
+            const tPolos = prodPolos.reduce((s,p) => s + Number(p.pcs), 0);
+            const tLabel = prodLabel.reduce((s,p) => s + Number(p.pcs), 0);
+            doc.text(`Total Op. Polos: ${tPolos} PCS (${(tPolos/20).toFixed(2)} Kodi)`, 14, 30);
+            doc.text(`Total Op. Label: ${tLabel} PCS (${(tLabel/20).toFixed(2)} Kodi)`, 14, 36);
+
+            doc.text(`Rincian Input (Op. Jahit Polos):`, 14, 46);
+            const tableDataPolos = prodPolos.map(p => [
+              new Date(p.timestamp).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}),
+              p.karyawanNama, p.corak, p.kodeCorak, p.grid, p.pcs, p.kodi, (p.adminName || '-')
+            ]);
+            
+            doc.autoTable({
+              startY: 50,
+              head: [['Waktu', 'Operator', 'Corak', 'Kode', 'Grid', 'PCS', 'Kodi', 'Admin']],
+              body: tableDataPolos,
+              theme: 'grid', styles: { fontSize: 8 }
+            });
+            
+            currentY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 60;
+            if (currentY > 260) { doc.addPage(); currentY = 20; }
+            doc.text(`Rincian Input (Op. Jahit Label):`, 14, currentY);
+            const tableDataLabel = prodLabel.map(p => [
+              new Date(p.timestamp).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}),
+              p.karyawanNama, p.corak, p.kodeCorak, p.jenisLabel || '-', p.grid, p.pcs, p.kodi, (p.adminName || '-')
+            ]);
+            
+            doc.autoTable({
+              startY: currentY + 4,
+              head: [['Waktu', 'Operator', 'Corak', 'Kode', 'Label', 'Grid', 'PCS', 'Kodi', 'Admin']],
+              body: tableDataLabel,
+              theme: 'grid', styles: { fontSize: 8 }
+            });
+            currentY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : currentY + 20;
+        } 
+        else if (type === 'absensi') {
+            const activeKaryawan = state.karyawan.filter(k => !k.deleted);
+            const karyawanPolos = activeKaryawan.filter(k => k.statusOp !== 'Op. Jahit Label');
+            const karyawanLabel = activeKaryawan.filter(k => k.statusOp === 'Op. Jahit Label');
+
+            // 1. Tabel Absensi Op. Polos
+            doc.text(`Daftar Absensi (Op. Jahit Polos):`, 14, 30);
+            const tableDataPolos = karyawanPolos.map(k => [
+               k.nik, k.nama, k.statusOp, ui.getAutoStatus(k)
+            ]);
+            doc.autoTable({
+              startY: 34,
+              head: [['NIK', 'Nama Karyawan', 'Posisi', 'Status Kehadiran']],
+              body: tableDataPolos,
+              theme: 'grid', styles: { fontSize: 9 }
+            });
+            
+            // 2. Tabel Absensi Op. Label
+            currentY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 60;
+            if (currentY > 260) { doc.addPage(); currentY = 20; }
+            doc.text(`Daftar Absensi (Op. Jahit Label):`, 14, currentY);
+            const tableDataLabel = karyawanLabel.map(k => [
+               k.nik, k.nama, k.statusOp, ui.getAutoStatus(k)
+            ]);
+            doc.autoTable({
+              startY: currentY + 4,
+              head: [['NIK', 'Nama Karyawan', 'Posisi', 'Status Kehadiran']],
+              body: tableDataLabel,
+              theme: 'grid', styles: { fontSize: 9 }
+            });
+            
+            currentY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : currentY + 20;
+            
+            // 3. Menghitung Ringkasan Detail Absensi (Sesuai Gambar)
+            let hadirPolos = 0, hadirLabel = 0;
+            let listTidakHadir = [];
+            activeKaryawan.forEach(k => {
+              const status = ui.getAutoStatus(k);
+              if (status === 'Hadir') {
+                if (k.statusOp === 'Op. Jahit Label') hadirLabel++;
+                else hadirPolos++;
+              } else {
+                listTidakHadir.push(`${k.nama} (${status})`);
+              }
+            });
+            const totalHadir = hadirPolos + hadirLabel;
+            
+            if (currentY > 250) { doc.addPage(); currentY = 20; }
+
+            // Merender teks "Detail Absensi Hari Ini" ke dalam PDF
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.text("Detail Absensi Hari Ini:", 14, currentY);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            currentY += 6;
+            doc.text(`Total Hadir: ${totalHadir} (Polos: ${hadirPolos}, Label: ${hadirLabel})`, 14, currentY);
+            currentY += 6;
+            doc.text(`Tidak Hadir: ${listTidakHadir.length}`, 14, currentY);
+            currentY += 6;
+            
+            let ketTidakHadir = listTidakHadir.length > 0 ? `Keterangan: ${listTidakHadir.join(', ')}` : "Semua karyawan hadir hari ini!";
+            const splitKet = doc.splitTextToSize(ketTidakHadir, 180);
+            doc.text(splitKet, 14, currentY);
+            currentY += (splitKet.length * 5) + 5;
+        }
+
+        if (state.catatanLaporan) {
+           if (currentY > 260) { doc.addPage(); currentY = 20; }
+           doc.setFontSize(10);
+           doc.setFont("helvetica", "bold");
+           doc.text("Catatan Harian:", 14, currentY);
+           doc.setFont("helvetica", "normal");
+           doc.setFontSize(9);
+           
+           const splitText = doc.splitTextToSize(state.catatanLaporan, 180);
+           doc.text(splitText, 14, currentY + 6);
+        }
+
+        doc.save(`Laporan_${type}_${dateStr}.pdf`);
+        this.toast('PDF Berhasil Diunduh');
+      },
+
+      exportExcel(type) {
+        const dateStr = getToday();
+        const wb = XLSX.utils.book_new();
+        
+        if (type === 'produksi') {
+            const prodToday = state.produksi.filter(p => p.tanggal === dateStr);
+            const prodPolos = prodToday.filter(p => { const k = state.karyawan.find(x => x.id === p.karyawanId); return k && k.statusOp !== 'Op. Jahit Label'; });
+            const prodLabel = prodToday.filter(p => { const k = state.karyawan.find(x => x.id === p.karyawanId); return k && k.statusOp === 'Op. Jahit Label'; });
+
+            const dataPolos = prodPolos.map(p => ({
+              Waktu: new Date(p.timestamp).toLocaleTimeString('id-ID'),
+              Operator: p.karyawanNama, Corak: p.corak, Kode: p.kodeCorak, Grid: p.grid, PCS: p.pcs, Kodi: p.kodi, Admin: p.adminName
+            }));
+            const wsPolos = XLSX.utils.json_to_sheet(dataPolos.length ? dataPolos : [{Waktu: '-', Operator: 'Kosong'}]);
+            XLSX.utils.book_append_sheet(wb, wsPolos, "Rincian Polos");
+
+            const dataLabel = prodLabel.map(p => ({
+              Waktu: new Date(p.timestamp).toLocaleTimeString('id-ID'),
+              Operator: p.karyawanNama, Corak: p.corak, Kode: p.kodeCorak, "Jenis Label": p.jenisLabel || '-', Grid: p.grid, PCS: p.pcs, Kodi: p.kodi, Admin: p.adminName
+            }));
+            const wsLabel = XLSX.utils.json_to_sheet(dataLabel.length ? dataLabel : [{Waktu: '-', Operator: 'Kosong'}]);
+            XLSX.utils.book_append_sheet(wb, wsLabel, "Rincian Label");
+
+            const tPolos = prodPolos.reduce((s,p) => s + Number(p.pcs), 0);
+            const tLabel = prodLabel.reduce((s,p) => s + Number(p.pcs), 0);
+            const wsRekapProd = XLSX.utils.json_to_sheet([
+                { "Kategori": "Op. Jahit Polos", "Total PCS": tPolos, "Total Kodi": (tPolos/20).toFixed(2) },
+                { "Kategori": "Op. Jahit Label", "Total PCS": tLabel, "Total Kodi": (tLabel/20).toFixed(2) }
+            ]);
+            XLSX.utils.book_append_sheet(wb, wsRekapProd, "Rekap Produksi");
+        } 
+        else if (type === 'absensi') {
+            const activeKaryawan = state.karyawan.filter(k => !k.deleted);
+            const karyawanPolos = activeKaryawan.filter(k => k.statusOp !== 'Op. Jahit Label');
+            const karyawanLabel = activeKaryawan.filter(k => k.statusOp === 'Op. Jahit Label');
+
+            // 1. Sheet Absensi Op. Polos
+            const dataAbsenPolos = karyawanPolos.map(k => ({
+               NIK: k.nik, Nama: k.nama, Posisi: k.statusOp, Status: ui.getAutoStatus(k)
+            }));
+            const wsAbsenPolos = XLSX.utils.json_to_sheet(dataAbsenPolos.length ? dataAbsenPolos : [{NIK: '-', Nama: 'Kosong'}]);
+            XLSX.utils.book_append_sheet(wb, wsAbsenPolos, "Absensi Polos");
+
+            // 2. Sheet Absensi Op. Label
+            const dataAbsenLabel = karyawanLabel.map(k => ({
+               NIK: k.nik, Nama: k.nama, Posisi: k.statusOp, Status: ui.getAutoStatus(k)
+            }));
+            const wsAbsenLabel = XLSX.utils.json_to_sheet(dataAbsenLabel.length ? dataAbsenLabel : [{NIK: '-', Nama: 'Kosong'}]);
+            XLSX.utils.book_append_sheet(wb, wsAbsenLabel, "Absensi Label");
+            
+            // 3. Menghitung Ringkasan Detail Absensi (Sesuai Gambar)
+            let hadirPolos = 0, hadirLabel = 0;
+            let listTidakHadir = [];
+            activeKaryawan.forEach(k => {
+              const status = ui.getAutoStatus(k);
+              if (status === 'Hadir') {
+                if (k.statusOp === 'Op. Jahit Label') hadirLabel++;
+                else hadirPolos++;
+              } else {
+                listTidakHadir.push(`${k.nama} (${status})`);
+              }
+            });
+            const totalHadir = hadirPolos + hadirLabel;
+
+            // Sheet Terpisah khusus Ringkasan
+            const rekapData = [
+               { "Detail Absensi": "Total Hadir", "Keterangan": totalHadir.toString() },
+               { "Detail Absensi": "- Polos", "Keterangan": hadirPolos.toString() },
+               { "Detail Absensi": "- Label", "Keterangan": hadirLabel.toString() },
+               { "Detail Absensi": "Tidak Hadir", "Keterangan": listTidakHadir.length.toString() },
+               { "Detail Absensi": "Status Karyawan", "Keterangan": listTidakHadir.length > 0 ? listTidakHadir.join(', ') : "Semua karyawan hadir hari ini!" }
+            ];
+            const wsRekap = XLSX.utils.json_to_sheet(rekapData);
+            XLSX.utils.book_append_sheet(wb, wsRekap, "Rekap Detail Absensi");
+        }
+
+        if (state.catatanLaporan) {
+           const wsCatatan = XLSX.utils.json_to_sheet([{ Catatan_Harian: state.catatanLaporan }]);
+           XLSX.utils.book_append_sheet(wb, wsCatatan, "Catatan");
+        }
+
+        XLSX.writeFile(wb, `Laporan_${type}_${dateStr}.xlsx`);
+        this.toast('Excel Berhasil Diunduh');
+      }
+    };
+
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        state.userId = user.uid;
+        
+        onSnapshot(docPath('master', 'master_data'), docSnap => {
+          if(docSnap.exists()) {
+             state.master = { ...defaultMaster, ...docSnap.data() };
+          } else {
+             state.master = JSON.parse(JSON.stringify(defaultMaster));
+          }
+          if (document.getElementById('input-master-corak')) ui.renderMasterSettings('corak');
+        });
+
+        onSnapshot(colPath('karyawan'), snap => {
+          state.karyawan = snap.docs.map(d => d.data());
+          if (state.tab === 'karyawan') ui.renderKaryawan();
+          if (state.tab === 'produksi') ui.renderProduksi();
+        });
+
+        const qProd = collection(db, 'artifacts', appId, 'users', state.userId, 'produksi');
+        onSnapshot(qProd, snap => {
+          state.produksi = snap.docs.map(d => d.data());
+          if (state.tab === 'produksi') ui.renderProduksi();
+          if (state.tab === 'laporan') ui.renderLaporan();
+        });
+
+        onSnapshot(colPath('absensi'), snap => {
+          state.absensi = snap.docs.map(d => d.data());
+          if (state.tab === 'karyawan') ui.renderKaryawan();
+          if (state.tab === 'laporan') ui.renderLaporan();
+        });
+
+      } else {
+        if (typeof __initial_auth_token !== 'undefined') {
+          signInWithCustomToken(auth, __initial_auth_token).catch(e => console.error(e));
+        } else {
+          signInAnonymously(auth).catch(e => console.error(e));
+        }
+      }
+    });
+
+    window.onload = () => {
+      ui.updateAdminUI();
+      ui.switchTab('produksi');
+    };
+  </script>
+</body>
+</html>
