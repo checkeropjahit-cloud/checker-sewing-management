@@ -175,10 +175,17 @@ const firebaseConfig = {
         setDoc(docPath('karyawan', id), { deleted: true }, { merge: true })
           .then(() => ui.toast('Karyawan dihapus', 'success'));
       },
-      saveKaryawan(e) {
+            saveKaryawan(e) {
         e.preventDefault();
-        if (!state.userId) return;
-        const id = document.getElementById('karyawan-id').value || crypto.randomUUID();
+        if (!state.userId) {
+          ui.toast('Koneksi belum siap, coba sesaat lagi', 'error');
+          return;
+        }
+
+        const inputId = document.getElementById('karyawan-id').value;
+        const generatedId = 'karyawan_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const id = inputId || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : generatedId);
+
         const data = {
           id,
           nama: document.getElementById('karyawan-nama').value,
@@ -187,11 +194,28 @@ const firebaseConfig = {
           hariLibur: document.getElementById('karyawan-hariLibur').value,
           timestamp: Date.now()
         };
-        setDoc(docPath('karyawan', id), data).then(() => {
-          ui.closeModal();
-          ui.toast('Data Karyawan Tersimpan', 'success');
-        });
+
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerText = 'Menyimpan...';
+        }
+
+        setDoc(docPath('karyawan', id), data)
+          .then(() => {
+            ui.closeModal();
+            ui.toast('Data Karyawan Tersimpan', 'success');
+          })
+          .catch(err => {
+            console.error(err);
+            ui.toast(`Gagal: ${err.message}`, 'error');
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.innerText = 'Simpan Data';
+            }
+          });
       },
+
       updateAbsen(karyawanId, status) {
         if (!state.userId) return;
         const id = `${karyawanId}_${getToday()}`;
