@@ -1486,12 +1486,13 @@
           if (state.tab === 'laporan') ui.renderLaporan();
         });
 
-      } else {
+           } else {
         signInAnonymously(auth).catch(e => {
           console.error('Anonymous Authentication failed:', e);
-          ui.toast('Gagal terhubung ke Firebase. Pastikan Anonymous Authentication aktif.', 'error');
+          ui.toast(`Error Auth: ${e.code || e.message}`, 'error');
         });
       }
+
     });
 
     window.onload = () => {
