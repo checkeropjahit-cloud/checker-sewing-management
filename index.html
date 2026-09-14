@@ -276,7 +276,7 @@ const firebaseConfig = {
         setDoc(docPath('produksi', id), { id, ...data, tanggal: getToday(), timestamp: Date.now() })
         .then(() => {
                     // --- KIRIM OTOMATIS KE GOOGLE SHEETS ---
-          const GAS_URL = 'PASTE_URL_DARI_APPS_SCRIPT_DISINI';
+          const GAS_URL = 'https://script.google.com/macros/s/AKfycbwYGJ8wQuQaGi-_9ACrSHZuxCN8PPPi3VdljmHl-FYk2cEc6FaEhy83S2oZvqmAw4Pdig/exec';
           if (GAS_URL && !GAS_URL.includes('PASTE_URL')) {
             fetch(GAS_URL, {
               method: 'POST',
