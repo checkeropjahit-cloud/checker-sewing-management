@@ -111,15 +111,16 @@
     // Firebase configuration for the CHECKER production project.
     // This web configuration is safe to include in a frontend application;
     // access control is enforced separately with Firestore Security Rules.
-    const firebaseConfig = {
-      apiKey: "AIzaSyCSh-vkJm0Rt0fR25E09_iOMjL6RZjiB7c",
-      authDomain: "checker-sewing-management.firebaseapp.com",
-      projectId: "checker-sewing-management",
-      storageBucket: "checker-sewing-management.firebasestorage.app",
-      messagingSenderId: "505916504453",
-      appId: "1:505916504453:web:daa0feed33b76a88be2cec",
-      measurementId: "G-CF8BF35Y3E"
-    };
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCSh-vkJmORt0fR25EO9_iOMjL6RZjib7c",
+  authDomain: "checker-sewing-management.firebaseapp.com",
+  projectId: "checker-sewing-management",
+  storageBucket: "checker-sewing-management.firebasestorage.app",
+  messagingSenderId: "505916504453",
+  appId: "1:505916504453:web:daa0feed33b76a88be2cec",
+  measurementId: "G-CF8BF35Y3E"
+};
 
     // All devices must use the same shared Firestore collections.
     // The previous version stored data under each anonymous user's UID,
