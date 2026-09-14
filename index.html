@@ -165,8 +165,9 @@ const firebaseConfig = {
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
-        function docPath(col, docId) { return doc(db, col, docId); }
+    function docPath(col, docId) { return doc(db, col, docId); }
     function colPath(col) { return collection(db, col); }
+
 
     window.api = {
       deleteKaryawan(id) {
