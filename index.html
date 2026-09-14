@@ -4,6 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>CHECKER - Sewing Management</title>
+    <!-- Setup PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -238,6 +249,22 @@
 
         setDoc(docPath('produksi', id), { id, ...data, tanggal: getToday(), timestamp: Date.now() })
         .then(() => {
+                    // --- KIRIM OTOMATIS KE GOOGLE SHEETS ---
+          const GAS_URL = 'PASTE_URL_DARI_APPS_SCRIPT_DISINI';
+          if (GAS_URL && !GAS_URL.includes('PASTE_URL')) {
+            fetch(GAS_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...data,
+                statusOp: k.statusOp,
+                tanggal: getToday(),
+                timestamp: Date.now()
+              })
+            }).catch(err => console.warn('Sheets sync error:', err));
+          }
+
           ui.toast('Data produksi tersimpan', 'success');
           state.form.step = 1;
           state.form.corak = '';
